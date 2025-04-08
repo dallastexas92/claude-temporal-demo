@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude via Temporal</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            font-family: inherit;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #0070f3;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0051a2;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .response {
+            white-space: pre-wrap;
+            padding: 15px;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+            min-height: 200px;
+        }
+        .loading {
+            display: none;
+            margin-top: 10px;
+        }
+        .options {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+        .options select, .options input {
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <h1>Claude via Temporal Workflow</h1>
+    <div class="container">
+        <div>
+            <h2>Prompt</h2>
+            <div class="options">
+                <div>
+                    <label for="model">Model:</label>
+                    <select id="model">
+                        <option value="claude-3-7-sonnet-20250219">Claude 3.7 Sonnet</option>
+                        <option value="claude-3-5-sonnet-20240620">Claude 3.5 Sonnet</option>
+                        <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="maxTokens">Max Tokens:</label>
+                    <input type="number" id="maxTokens" value="1024" min="100" max="4096">
+                </div>
+            </div>
+            <textarea id="prompt" placeholder="Enter your prompt here..."></textarea>
+            <button id="submit">Send to Claude</button>
+            <div id="loading" class="loading">Processing your request via Temporal workflow...</div>
+        </div>
+        <div>
+            <h2>Response</h2>
+            <div class="response" id="response"></div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const promptElement = document.getElementById('prompt');
+            const modelElement = document.getElementById('model');
+            const maxTokensElement = document.getElementById('maxTokens');
+            const submitButton = document.getElementById('submit');
+            const responseElement = document.getElementById('response');
+            const loadingElement = document.getElementById('loading');
+
+            submitButton.addEventListener('click', async () => {
+                const prompt = promptElement.value.trim();
+                if (!prompt) {
+                    alert('Please enter a prompt');
+                    return;
+                }
+
+                // Disable button and show loading
+                submitButton.disabled = true;
+                responseElement.innerText = '';
+                loadingElement.style.display = 'block';
+
+                try {
+                    const response = await fetch('/api/claude', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            prompt,
+                            model: modelElement.value,
+                            maxTokens: parseInt(maxTokensElement.value, 10),
+                        }),
+                    });
+
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        responseElement.innerText = `Error: ${data.error}`;
+                    } else {
+                        responseElement.innerText = data.text;
+                    }
+                } catch (error) {
+                    responseElement.innerText = `Error: ${error.message}`;
+                } finally {
+                    // Re-enable button and hide loading
+                    submitButton.disabled = false;
+                    loadingElement.style.display = 'none';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
