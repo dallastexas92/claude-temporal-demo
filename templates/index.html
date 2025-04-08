@@ -19,7 +19,7 @@
         }
         textarea {
             width: 100%;
-            height: 150px;
+            height: 100px;
             padding: 10px;
             border-radius: 5px;
             border: 1px solid #ccc;
@@ -41,14 +41,6 @@
             background-color: #ccc;
             cursor: not-allowed;
         }
-        .response {
-            white-space: pre-wrap;
-            padding: 15px;
-            border: 1px solid #eee;
-            border-radius: 5px;
-            background-color: #f9f9f9;
-            min-height: 200px;
-        }
         .loading {
             display: none;
             margin-top: 10px;
@@ -63,14 +55,61 @@
             border-radius: 5px;
             border: 1px solid #ccc;
         }
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 10px;
+            border: 1px solid #eee;
+            border-radius: 5px;
+        }
+        .message {
+            padding: 10px 15px;
+            border-radius: 10px;
+            max-width: 80%;
+        }
+        .user-message {
+            background-color: #e1f5fe;
+            align-self: flex-end;
+        }
+        .assistant-message {
+            background-color: #f1f1f1;
+            align-self: flex-start;
+        }
+        .system-message {
+            background-color: #ffe0b2;
+            align-self: center;
+            font-style: italic;
+        }
+        .new-chat-btn {
+            background-color: #4caf50;
+            margin-top: 10px;
+        }
+        .new-chat-btn:hover {
+            background-color: #45a049;
+        }
+        .end-chat-btn {
+            background-color: #f44336;
+            margin-top: 10px;
+            margin-left: 10px;
+        }
+        .end-chat-btn:hover {
+            background-color: #d32f2f;
+        }
+        .end-chat-btn:disabled {
+            background-color: #ffcdd2;
+        }
     </style>
 </head>
 <body>
     <h1>Claude via Temporal Workflow</h1>
+    
     <div class="container">
         <div>
-            <h2>Prompt</h2>
-            <div class="options">
+            <div class="options" id="settingsContainer">
                 <div>
                     <label for="model">Model:</label>
                     <select id="model">
@@ -84,13 +123,18 @@
                     <input type="number" id="maxTokens" value="1024" min="100" max="4096">
                 </div>
             </div>
-            <textarea id="prompt" placeholder="Enter your prompt here..."></textarea>
-            <button id="submit">Send to Claude</button>
-            <div id="loading" class="loading">Processing your request via Temporal workflow...</div>
-        </div>
-        <div>
-            <h2>Response</h2>
-            <div class="response" id="response"></div>
+            
+            <div class="chat-container" id="chatContainer">
+                <!-- Chat messages will appear here -->
+            </div>
+            
+            <div>
+                <textarea id="prompt" placeholder="Enter your message here..."></textarea>
+                <button id="submit">Send to Claude</button>
+                <button id="newChat" class="new-chat-btn">New Chat</button>
+                <button id="endChat" class="end-chat-btn" disabled>End Conversation</button>
+                <div id="loading" class="loading">Processing your request via Temporal workflow...</div>
+            </div>
         </div>
     </div>
 
@@ -100,49 +144,171 @@
             const modelElement = document.getElementById('model');
             const maxTokensElement = document.getElementById('maxTokens');
             const submitButton = document.getElementById('submit');
-            const responseElement = document.getElementById('response');
+            const newChatButton = document.getElementById('newChat');
+            const endChatButton = document.getElementById('endChat');
+            const chatContainer = document.getElementById('chatContainer');
             const loadingElement = document.getElementById('loading');
-
-            submitButton.addEventListener('click', async () => {
-                const prompt = promptElement.value.trim();
-                if (!prompt) {
-                    alert('Please enter a prompt');
-                    return;
-                }
-
-                // Disable button and show loading
+            const settingsContainer = document.getElementById('settingsContainer');
+            
+            // Current conversation state
+            let conversationId = null;
+            
+            // Enable End Chat button only when in a conversation
+            function updateButtonStates() {
+                endChatButton.disabled = !conversationId;
+            }
+            
+            // Send a message to Claude (start new conversation or continue existing one)
+            async function sendMessage(message) {
                 submitButton.disabled = true;
-                responseElement.innerText = '';
                 loadingElement.style.display = 'block';
-
+                
                 try {
-                    const response = await fetch('/api/claude', {
+                    // Add user message to the chat
+                    addMessageToChat('user', message);
+                    
+                    const data = {
+                        prompt: message,
+                    };
+                    
+                    // If starting a new conversation, include model settings
+                    if (!conversationId) {
+                        data.model = modelElement.value;
+                        data.maxTokens = parseInt(maxTokensElement.value, 10);
+                    } else {
+                        data.conversationId = conversationId;
+                    }
+                    
+                    const response = await fetch('/api/chat', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify({
-                            prompt,
-                            model: modelElement.value,
-                            maxTokens: parseInt(maxTokensElement.value, 10),
-                        }),
+                        body: JSON.stringify(data),
                     });
-
-                    const data = await response.json();
                     
-                    if (data.error) {
-                        responseElement.innerText = `Error: ${data.error}`;
+                    const result = await response.json();
+                    
+                    if (result.error) {
+                        addMessageToChat('assistant', `Error: ${result.error}`);
                     } else {
-                        responseElement.innerText = data.text;
+                        // Save the conversation ID if this is a new conversation
+                        if (!conversationId && result.conversationId) {
+                            conversationId = result.conversationId;
+                            console.log(`Started conversation with ID: ${conversationId}`);
+                            
+                            // Hide settings once conversation has started
+                            settingsContainer.style.display = 'none';
+                            
+                            // Update button states
+                            updateButtonStates();
+                        }
+                        
+                        // Add Claude's response to the chat
+                        addMessageToChat('assistant', result.text);
                     }
                 } catch (error) {
-                    responseElement.innerText = `Error: ${error.message}`;
+                    addMessageToChat('assistant', `Error: ${error.message}`);
                 } finally {
-                    // Re-enable button and hide loading
                     submitButton.disabled = false;
                     loadingElement.style.display = 'none';
+                    promptElement.value = '';
+                }
+            }
+            
+            // Add a message to the chat UI
+            function addMessageToChat(role, content) {
+                const messageElement = document.createElement('div');
+                messageElement.classList.add('message');
+                
+                if (role === 'user') {
+                    messageElement.classList.add('user-message');
+                } else if (role === 'assistant') {
+                    messageElement.classList.add('assistant-message');
+                } else if (role === 'system') {
+                    messageElement.classList.add('system-message');
+                }
+                
+                messageElement.textContent = content;
+                chatContainer.appendChild(messageElement);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+            
+            // Handle send button click
+            submitButton.addEventListener('click', () => {
+                const message = promptElement.value.trim();
+                if (!message) {
+                    alert('Please enter a message');
+                    return;
+                }
+                
+                sendMessage(message);
+            });
+            
+            // Handle Enter key in textarea
+            promptElement.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    submitButton.click();
                 }
             });
+            
+            // Handle new chat button
+            newChatButton.addEventListener('click', () => {
+                // Reset conversation state
+                conversationId = null;
+                
+                // Clear chat container
+                chatContainer.innerHTML = '';
+                
+                // Show settings
+                settingsContainer.style.display = 'flex';
+                
+                // Clear prompt
+                promptElement.value = '';
+                
+                // Focus on prompt
+                promptElement.focus();
+                
+                // Update button states
+                updateButtonStates();
+            });
+            
+            // Handle end conversation button
+            endChatButton.addEventListener('click', async () => {
+                if (!conversationId) return;
+                
+                if (!confirm('Are you sure you want to end this conversation? This action cannot be undone.')) {
+                    return;
+                }
+                
+                endChatButton.disabled = true;
+                
+                try {
+                    const response = await fetch(`/api/end-conversation/${conversationId}`, {
+                        method: 'POST'
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        addMessageToChat('system', 'Conversation ended.');
+                        // Reset the conversation state but keep the chat history visible
+                        conversationId = null;
+                        // Show settings for next conversation
+                        settingsContainer.style.display = 'flex';
+                    } else {
+                        addMessageToChat('system', `Error: ${result.error}`);
+                    }
+                } catch (error) {
+                    addMessageToChat('system', `Error: ${error.message}`);
+                } finally {
+                    updateButtonStates();
+                }
+            });
+            
+            // Initialize button states
+            updateButtonStates();
         });
     </script>
 </body>

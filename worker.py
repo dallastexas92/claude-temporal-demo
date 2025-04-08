@@ -6,7 +6,7 @@ from temporalio.client import Client, TLSConfig
 from temporalio.worker import Worker
 
 from activities import get_claude_response
-from workflows import ClaudeWorkflow
+from workflows import ClaudeChatWorkflow
 
 
 # Configure logging
@@ -53,7 +53,7 @@ async def run_worker():
     worker = Worker(
         client,
         task_queue="claude-queue",
-        workflows=[ClaudeWorkflow],
+        workflows=[ClaudeChatWorkflow],
         activities=[get_claude_response],
     )
     
